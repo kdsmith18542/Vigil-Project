@@ -10,12 +10,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"math/big"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"blockchain/standalone/kawpow"
+
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/chaincfg/v3"
 	"github.com/decred/dcrd/crypto/rand"
@@ -240,7 +242,7 @@ func (m *CPUMiner) submitBlock(block *dcrutil.Block, isBlake3PowActive bool) boo
 // This function will return early with false when the provided context is
 // cancelled or an unexpected error happens.
 func (m *CPUMiner) solveBlock(ctx context.Context, header *wire.BlockHeader,
-	stats *speedStats, isBlake3PowActive bool) bool {
+	stats *speedStats) bool {
 
 	// Choose a random extra nonce offset for this block template and
 	// worker.
@@ -249,101 +251,50 @@ func (m *CPUMiner) solveBlock(ctx context.Context, header *wire.BlockHeader,
 	// Create some convenience variables.
 	targetDiff, isNeg, overflows := primitives.DiffBitsToUint256(header.Bits)
 	if isNeg || overflows {
+		log.Errorf("Target difficulty of %08x is invalid", header.Bits)
 		return false
 	}
 
-	// Serialize the header for hashing.
-	hdrBytes := header.BytesNoNonce()
+	kp := kawpow.New()
 
-	// Initialize hashing state for KawPoW
-	height := int64(header.Height)
-	seedHash, err := kawpow.CalcSeedHash(height, header.Timestamp.Unix())
-	if err != nil {
-		return false
-	}
-
-	// The extraNonce field is used to allow the miner to vary the block
-	// header to generate multiple hashes for the same block without
-	// having to rebuild the merkle tree or perform other expensive
-	// operations.
-	extraNonce := uint64(0)
-
-	// Create a couple of convenience functions to update the speed stats
-	// and check for cancellation.
-	var hashesCompleted uint64
-	updateSpeedStats := func() {
-		totalHashes := stats.totalHashes.Add(hashesCompleted)
-		hashesCompleted = 0
-
-		// Nothing to do if we're not maintaining stats for the speed monitor.
-		if stats.updateHashes == nil {
-			return
-		}
-
+	for {
 		select {
-		case stats.updateHashes <- totalHashes:
+		case <-ctx.Done():
+			return false
+
 		default:
-		}
-	}
+			// Nonce is 64-bit for KawPoW.
+			nonce := enOffset
+			enOffset++
 
-	// Loop until the block is solved.
-	for extraNonce < maxNonce {
-		// Update the extra nonce in the header and serialize for hashing.
-		binary.LittleEndian.PutUint64(header.ExtraData[:], extraNonce+enOffset)
+			// Get the block header bytes without the nonce and mix digest,
+			// as they will be calculated by KawPoW.
+			headerBytesNoNonce := header.BytesNoNonce()
 
-		// Search through the entire nonce range for a solution
-		for nonce := uint64(0); ; nonce++ {
-			// Periodically update the speed stats and check for cancellation
-			if nonce > 0 && nonce%65535 == 0 {
-				updateSpeedStats()
-
-				select {
-				case <-ctx.Done():
-					return false
-				default:
-				}
-
-				m.g.UpdateBlockTime(header)
-
-				// Update time in the serialized header bytes directly too since
-				// it might have changed.
-				const timestampOffset = 136
-				timestamp := uint32(header.Timestamp.Unix())
-				binary.LittleEndian.PutUint32(hdrBytes[timestampOffset:], timestamp)
-			}
-
-			// Update the nonce in the serialized header bytes directly and
-			// compute the block header hash.
-			const nonceSerOffset = 140
-			binary.LittleEndian.PutUint64(hdrBytes[nonceSerOffset:], nonce)
-			
-			// For KawPoW, we need to generate both the hash and mix digest
-			hash, mixDigest, err := kawpow.Hash(height, header.Timestamp.Unix(), seedHash, hdrBytes, nonce)
+			// Compute the KawPoW hash and mix digest.
+			finalHashBytes, mixDigestBytes, err := kp.Hash(headerBytesNoNonce, nonce)
 			if err != nil {
+				log.Errorf("Failed to compute KawPoW hash: %v", err)
 				return false
 			}
-			hashesCompleted++
 
-			// The block is solved when the new block hash is less than the
-			// target difficulty.
-			if n := primitives.HashToUint256(&hash); n.LtEq(&targetDiff) {
-				// Update the nonce, mix digest and extra nonce fields
-				header.Nonce = nonce
-				header.MixDigest = mixDigest
-				updateSpeedStats()
+			// Update the block header with the calculated nonce and mix digest.
+			header.Nonce = nonce
+			copy(header.MixDigest[:], mixDigestBytes)
+
+			// Convert the final hash to a big.Int for comparison.
+			var hashInt big.Int
+			hashInt.SetBytes(finalHashBytes)
+
+			// Check if the hash meets the difficulty target.
+			if hashInt.Cmp(targetDiff) <= 0 {
+				stats.totalHashes.Add(1)
 				return true
 			}
 
-			if nonce == maxNonce {
-				updateSpeedStats()
-				break
-			}
+			stats.totalHashes.Add(1)
 		}
-
-		extraNonce++
 	}
-
-	return false
 }
 
 // solver is a worker that is controlled by a given generateBlocks goroutine.
@@ -407,7 +358,7 @@ func (m *CPUMiner) solver(ctx context.Context, template *mining.BlockTemplate,
 		// data of the shared template.
 		shallowBlockCopy := *template.Block
 		shallowBlockHdr := &shallowBlockCopy.Header
-		if m.solveBlock(ctx, shallowBlockHdr, speedStats, isBlake3PowActive) {
+		if m.solveBlock(ctx, shallowBlockHdr, speedStats) {
 			// Avoid submitting any solutions that might have been found in
 			// between the time a worker was signalled to stop and it actually
 			// stopping.
@@ -487,19 +438,11 @@ func (m *CPUMiner) generateBlocks(ctx context.Context, workerID uint64) {
 				solverCancel()
 			}
 
-			// Determine the state of the blake3 proof of work agenda.  An error
-			// should never really happen here in practice, but just loop around
-			// and wait for another template if it does.
-			isBlake3PowActive, err := m.cfg.IsBlake3PowAgendaActive(&prevHash)
-			if err != nil {
-				continue
-			}
-
 			// Start another goroutine for the new template.
 			solverCtx, solverCancel = context.WithCancel(ctx)
 			solverWg.Add(1)
 			go func() {
-				m.solver(solverCtx, template, &speedStats, isBlake3PowActive)
+				m.solver(solverCtx, template, &speedStats, false)
 				solverWg.Done()
 			}()
 
@@ -773,15 +716,6 @@ out:
 		}
 		m.discretePrevTemplate.Store(nil)
 
-		// Determine the state of the blake3 proof of work agenda.  An error
-		// should never really happen here in practice, but just loop around
-		// and wait for another template if it does.
-		prevHash := templateNtfn.Template.Block.Header.PrevBlock
-		isBlake3PowActive, err := m.cfg.IsBlake3PowAgendaActive(&prevHash)
-		if err != nil {
-			continue
-		}
-
 		// Attempt to solve the block.
 		//
 		// The function will exit with false if the block was not solved for any
@@ -799,9 +733,9 @@ out:
 		// data of the shared template.
 		shallowBlockCopy := *templateNtfn.Template.Block
 		shallowBlockHdr := &shallowBlockCopy.Header
-		if m.solveBlock(ctx, shallowBlockHdr, &stats, isBlake3PowActive) {
+		if m.solveBlock(ctx, shallowBlockHdr, &stats) {
 			block := dcrutil.NewBlock(&shallowBlockCopy)
-			if m.submitBlock(block, isBlake3PowActive) {
+			if m.submitBlock(block, false) {
 				m.discretePrevTemplate.Store(templateNtfn.Template)
 				blockHashes = append(blockHashes, block.Hash())
 			}
