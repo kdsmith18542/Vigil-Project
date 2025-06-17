@@ -1,0 +1,74 @@
+# Vigil (VGL) - Official Project Directory Structure
+
+This document outlines the recommended file and folder structure for the entire Vigil project. This structure is designed to be logical, scalable, and easy for multiple developers to navigate.
+
+
+vigil-project/
+│
+├── 📁 node/              # The core Vigil blockchain daemon (fork of vgld)
+│   ├── cmd/
+│   │   └── vigilnode/    # Main application entry point
+│   ├── internal/         # Internal packages, not for external use
+│   ├── rpc/              # RPC server implementation
+│   ├── blockchain/       # Core blockchain logic (where KawPoW is integrated)
+│   ├── mining/           # Mining-related code
+│   ├── go.mod            # Go module file
+│   └── README.md
+│
+├── 📁 wallet/             # The official Vigil wallet (fork of vglwallet)
+│   ├── cmd/
+│   │   └── vigilwallet/  # Main application entry point
+│   ├── internal/
+│   ├── rpc/
+│   ├── go.mod
+│   └── README.md
+│
+├── 📁 pool/               # The official Vigil Mining Pool
+│   ├── cmd/
+│   │   └── vigilpool/    # Pool engine entry point (fork of VGLpool)
+│   ├── web-api/          # Go backend for the pool website API
+│   │   ├── handlers/
+│   │   ├── models/
+│   │   └── main.go
+│   ├── go.mod
+│   └── README.md
+│
+├── 📁 explorer/          # The official Vigil Block Explorer (fork of vgldata)
+│   ├── cmd/
+│   │   └── vigilexplorer/
+│   ├── internal/
+│   ├── go.mod
+│   └── README.md
+│
+├── 📁 website/            # The main marketing website (govgl.com)
+│   ├── pages/            # Next.js page routes (e.g., index.js)
+│   ├── components/       # Reusable React components (e.g., Header.js, Shield.js)
+│   ├── public/           # Static assets (images, fonts)
+│   ├── styles/           # Global CSS files
+│   ├── package.json
+│   └── next.config.js
+│
+└── 📁 docs/               # All project documentation
+├── whitepaper.md
+├── brand-guide.md
+└── technical-specs/
+└── tokenomics.md
+
+
+### **Explanation of Key Folders**
+
+* **`node/`**: This is the heart of the project. It contains the code for the full node that maintains the blockchain, validates transactions, and enforces consensus rules. The critical `KawPoW` integration work happens here.
+
+* **`wallet/`**: This contains the code for the user-facing wallet application. It communicates with the `node` to manage user funds, create transactions, and handle staking.
+
+* **`pool/`**: This directory is a self-contained project for the official mining pool.
+    * `cmd/vigilpool/`: The core pool engine, forked from `VGLpool` and modified for KawPoW. It handles connections from miners and distributes jobs.
+    * `web-api/`: A separate Go application that provides a REST API for the pool's frontend. It queries the pool engine and a database to get stats like hashrate, payments, and found blocks.
+
+* **`explorer/`**: This contains the code for the block explorer website, which allows users to view transactions, blocks, and addresses on the Vigil blockchain.
+
+* **`website/`**: This is the Next.js project for your main `govgl.com` marketing site (the visual demonstration we've been working on). It is completely separate from the functional blockchain components.
+
+* **`docs/`**: A central location for all high-level project documentation, including the whitepaper and brand guide. This keeps critical documents organized and separate from source code.
+
+This structure ensures that each part of the Vigil ecosystem is cleanly separated, which is a best practice for building and maintaining complex software.

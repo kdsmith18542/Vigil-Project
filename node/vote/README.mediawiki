@@ -1,0 +1,56 @@
+<img src="./readme-imgs/dcps_logo.png" />
+
+==Decred Change Proposals==
+
+A Decred Change Proposal, or DCP for short, is a design document that describes
+potential consensus changes to Decred.  Due to Decred's decentralized governance
+structure, any proposed changes to consensus require super-majority stakeholder
+approval via the integrated on-chain proof-of-stake voting infrastructure.
+Consequently, DCPs primarily serve for documentation, fostering
+cross-implementation compatibility, and helping ensure proper engineering rigor
+is followed.
+
+Prior to putting a consensus change to an on-chain vote, the proposed change
+must first be accompanied by a DCP as described in [[./dcp-0000/dcp-0000.mediawiki|DCP-0000]]
+along with providing a working and tested implementation, and the rule change
+must be gated behind a voting agenda which ensures the stakeholders are
+provided with the opportunity to vote to accept or reject the change.
+
+It is important to note that DCPs are the end result of a process that begins
+with the Decred off-chain proposal and voting system,
+[[https://proposals.decred.org/|Politeia]], which deals with more generalized
+proposal submissions.  It is through that system that all initial proposals for
+consensus changes are brought to life, undergo collaboration, and are subject to
+an initial community vote to determine if the work necessary to create a working
+implementation, its associated DCP, and an on-chain vote for the rule change
+should be performed.
+
+{|class="wikitable sortable" style="width: auto; text-align: center;"
+!Number!!Title!!Status
+|-
+|[[./dcp-0000/dcp-0000.mediawiki|0000]]||DCP Process||Active
+|-
+|[[./dcp-0001/dcp-0001.mediawiki|0001]]||New Stake Difficulty Algorithm||Active
+|-
+|[[./dcp-0002/dcp-0002.mediawiki|0002]]||SHA256 Opcode||Active
+|-
+|[[./dcp-0003/dcp-0003.mediawiki|0003]]||Relative Lock Time Support||Active
+|-
+|[[./dcp-0004/dcp-0004.mediawiki|0004]]||Fix LN Sequence Locks View||Active
+|-
+|[[./dcp-0005/dcp-0005.mediawiki|0005]]||Block Header Commitments||Active
+|-
+|[[./dcp-0006/dcp-0006.mediawiki|0006]]||Decentralized Treasury||Active
+|-
+|[[./dcp-0007/dcp-0007.mediawiki|0007]]||Revert Treasury Maximum Expenditure Policy||Active
+|-
+|[[./dcp-0008/dcp-0008.mediawiki|0008]]||Explicit Version Upgrades||Active
+|-
+|[[./dcp-0009/dcp-0009.mediawiki|0009]]||Automatic Ticket Revocations||Active
+|-
+|[[./dcp-0010/dcp-0010.mediawiki|0010]]||Change PoW/PoS Subsidy Split To 10/80||Active
+|-
+|[[./dcp-0011/dcp-0011.mediawiki|0011]]||Change PoW to BLAKE3 and ASERT||Active
+|-
+|[[./dcp-0012/dcp-0012.mediawiki|0012]]||Change PoW/PoS Subsidy Split To 1/89||Active
+|}

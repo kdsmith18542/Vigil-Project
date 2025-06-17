@@ -1,0 +1,54 @@
+/* socket connection */
+
+/* Notice: Portions of the connection indicator style come from html5rocks.com */
+@keyframes glowgreen {
+  from {
+    box-shadow: rgb(0 255 0 / 0%) 0 0 0;
+  }
+
+  to {
+    box-shadow: rgb(0 255 0 / 100%) 0 0 10px;
+  }
+}
+
+@keyframes glowred {
+  from {
+    box-shadow: rgb(255 0 0 / 0%) 0 0 0;
+  }
+
+  to {
+    box-shadow: rgb(255 0 0 / 100%) 0 0 10px;
+  }
+}
+
+#connection {
+  font: 12px sans-serif;
+  font-weight: bold;
+  vertical-align: middle;
+}
+
+#connection div {
+  background-image: url("/images/connecting.svg");
+  background-size: 15px 15px;
+  background-position: center;
+  width: 9px;
+  height: 9px;
+  display: inline-block;
+  border-radius: 10px;
+  margin-left: 5px;
+  animation-duration: 2s;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+
+#connection.connected div {
+  background-image: url("/images/connected.svg");
+  box-shadow: rgb(0 255 0 / 50%) 0 0 5px;
+  animation-name: glowgreen;
+}
+
+#connection.disconnected div {
+  background-image: url("/images/disconnected.svg");
+  box-shadow: rgb(255 0 0 / 50%) 0 0 5px;
+  animation-name: glowred;
+}

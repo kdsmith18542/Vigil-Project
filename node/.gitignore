@@ -1,0 +1,57 @@
+# Temp files
+*~
+
+# Databases
+dcrd.db
+*-shm
+*-wal
+
+# Log files
+*.log
+
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+
+# Folders
+_obj
+_test
+vendor
+.idea
+.vscode
+playground
+notes
+
+# Testing, profiling, and benchmarking artifacts
+cov.out
+*cpu.out
+*mem.out
+
+# Go 1.18 workspace
+go.work
+go.work.sum
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+_testmain.go
+
+# Binaries
+*.exe
+dcrd
+cmd/addblock/addblock
+cmd/findcheckpoint/findcheckpoint
+cmd/gencerts/gencerts
+cmd/promptsecret/promptsecret
+
+# Vim
+*.sw*
+Session.vim
