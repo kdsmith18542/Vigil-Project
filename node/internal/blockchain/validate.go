@@ -9,12 +9,11 @@ import (
 )
 
 func checkProofOfWork(header *wire.BlockHeader, powLimit *big.Int) error {
-	powHashV1 := header.PowHashV1()
-	err := standalone.CheckProofOfWork(&powHashV1, header.Bits, powLimit)
-	if err != nil {
-		powHashV2 := header.PowHashV2()
-		err = standalone.CheckProofOfWork(&powHashV2, header.Bits, powLimit)
-	}
+	// For Vigil, we only use KawPoW (V2) for all blocks
+	powHash := header.PowHashV2()
+	
+	// Verify the PoW using KawPoW algorithm
+	err := standalone.CheckProofOfWork(&powHash, header.Bits, powLimit, &header.MixDigest)
 	return standaloneToChainRuleError(err)
 }
 

@@ -1,11 +1,11 @@
-module github.com/decred/dcrd/chaincfg/v3
+module vigil.network/node/chaincfg
 
 go 1.17
 
 require (
 	github.com/davecgh/go-spew v1.1.1
-	github.com/decred/dcrd/chaincfg/chainhash v1.0.4
 	github.com/decred/dcrd/wire v1.7.0
+	vigil.network/node/chaincfg/chainhash v0.0.0
 )
 
 require (

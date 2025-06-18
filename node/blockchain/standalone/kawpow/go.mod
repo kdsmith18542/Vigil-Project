@@ -1,7 +1,11 @@
-module github.com/decred/dcrd/blockchain/standalone/kawpow
+module vigil.network/node/blockchain/standalone/kawpow
 
 go 1.19
 
-require github.com/decred/dcrd/chaincfg/chainhash v1.0.4
+require (
+	vigil.network/node/chaincfg/chainhash v0.0.0
+)
 
-require github.com/decred/dcrd/crypto/blake256 v1.0.1 // indirect
+replace (
+	vigil.network/node/chaincfg/chainhash => ../../../../chaincfg/chainhash
+)

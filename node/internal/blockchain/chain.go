@@ -1216,7 +1216,7 @@ func (b *BlockChain) reorganizeChainInternal(target *blockNode) error {
 		} else {
 			// The block must pass all of the validation rules which depend on
 			// having the full block data for all of its ancestors available.
-			if err := b.checkBlockContext(block, n.parent, BFNone); err != nil {
+			if err := b.checkBlockContext(block.MsgBlock(), n.parent); err != nil {
 				var rerr RuleError
 				if errors.As(err, &rerr) {
 					b.index.MarkBlockFailedValidation(n)

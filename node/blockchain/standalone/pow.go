@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"blockchain/standalone/kawpow"
+	"vigil.network/node/chaincfg/chainhash"
+	"vigil.network/node/blockchain/standalone/kawpow"
 )
 
 var (
@@ -213,40 +213,35 @@ func CheckProofOfWorkHash(powHash *chainhash.Hash, difficultyBits uint32) error 
 //
 // This is semantically equivalent to and slightly more efficient than calling
 // CheckProofOfWorkRange followed by CheckProofOfWorkHash.
-func CheckProofOfWork(powHash *chainhash.Hash, difficultyBits uint32, powLimit *big.Int, mixDigest *chainhash.Hash) error {
+func CheckProofOfWork(powHash *chainhash.Hash, difficultyBits uint32, powLimit *big.Int, mixDigest *[32]byte) error {
 	target := CompactToBig(difficultyBits)
 	if err := checkProofOfWorkRange(target, powLimit); err != nil {
 		return err
 	}
 
-	// The proof of work hash must be less than the target difficulty.
-	if err := checkProofOfWorkHash(powHash, target); err != nil {
-		return err
-	}
-
-	// For KawPoW, verify the mix digest matches the expected value
+	// For KawPoW, we need to verify the mix digest matches the expected value
 	if mixDigest != nil {
 		// Create a new KawPoW hasher
-		kawpow := kawpow.New()
+		kp := kawpow.New()
 		
-		// The header bytes should be passed in the powHash parameter
-		headerBytes := powHash.CloneBytes()
+		// The header bytes are in powHash (from PowHashV2)
+	headerBytes := powHash.CloneBytes()
 		
-		// The nonce should be extracted from the header bytes
-		// Assuming the nonce is the last 8 bytes of the header
+		// The nonce is the last 8 bytes of the header
 		nonce := binary.LittleEndian.Uint64(headerBytes[len(headerBytes)-8:])
 		
 		// Verify the mix digest
-		valid, err := kawpow.Verify(headerBytes, nonce, mixDigest.CloneBytes())
+		valid, err := kp.Verify(headerBytes, nonce, mixDigest[:])
 		if err != nil {
-			return err
+			return fmt.Errorf("error verifying mix digest: %v", err)
 		}
 		if !valid {
 			return fmt.Errorf("invalid mix digest")
 		}
 	}
 
-	return nil
+	// The proof of work hash must be less than the target difficulty.
+	return checkProofOfWorkHash(powHash, target)
 }
 
 // CalcASERTDiff calculates an absolutely scheduled exponentially weighted

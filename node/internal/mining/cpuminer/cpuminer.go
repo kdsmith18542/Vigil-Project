@@ -16,13 +16,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"blockchain/standalone/kawpow"
-
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/chaincfg/v3"
 	"github.com/decred/dcrd/crypto/rand"
 	"github.com/decred/dcrd/dcrutil/v4"
 	"github.com/decred/dcrd/internal/blockchain"
+	"github.com/decred/dcrd/internal/kawpow"
 	"github.com/decred/dcrd/internal/mining"
 	"github.com/decred/dcrd/internal/staging/primitives"
 	"github.com/decred/dcrd/wire"
@@ -97,11 +96,6 @@ type Config struct {
 	// not current since any solved blocks would be on a side chain and
 	// up orphaned anyways.
 	IsCurrent func() bool
-
-	// IsBlake3PowAgendaActive returns whether or not the agenda to change the
-	// proof of work hash function to blake3, as defined in DCP0011, has passed
-	// and is now active for the block AFTER the given block.
-	IsBlake3PowAgendaActive func(prevHash *chainhash.Hash) (bool, error)
 }
 
 // CPUMiner provides facilities for solving blocks (mining) using the CPU in a
@@ -189,7 +183,7 @@ out:
 
 // submitBlock submits the passed block to network after ensuring it passes all
 // of the consensus validation rules.
-func (m *CPUMiner) submitBlock(block *dcrutil.Block, isBlake3PowActive bool) bool {
+func (m *CPUMiner) submitBlock(block *dcrutil.Block) bool {
 	m.submitBlockLock.Lock()
 	defer m.submitBlockLock.Unlock()
 
@@ -220,11 +214,8 @@ func (m *CPUMiner) submitBlock(block *dcrutil.Block, isBlake3PowActive bool) boo
 	// The block was accepted.
 	blockHash := block.Hash()
 	var powHashStr string
-	powHashFn := block.MsgBlock().PowHashV1
-	if isBlake3PowActive {
-		powHashFn = block.MsgBlock().PowHashV2
-	}
-	powHash := powHashFn()
+	// KawPoW is the active PoW algorithm, so use PowHashV2.
+	powHash := block.MsgBlock().PowHashV2()
 	if powHash != *blockHash {
 		powHashStr = ", pow hash " + powHash.String()
 	}
@@ -286,8 +277,12 @@ func (m *CPUMiner) solveBlock(ctx context.Context, header *wire.BlockHeader,
 			var hashInt big.Int
 			hashInt.SetBytes(finalHashBytes)
 
+			// Convert targetDiff to a big.Int for comparison.
+			// Note: Uint256.ToBig() returns a *big.Int
+			bigTargetDiff := targetDiff.ToBig()
+
 			// Check if the hash meets the difficulty target.
-			if hashInt.Cmp(targetDiff) <= 0 {
+			if hashInt.Cmp(bigTargetDiff) <= 0 {
 				stats.totalHashes.Add(1)
 				return true
 			}
@@ -307,7 +302,7 @@ func (m *CPUMiner) solveBlock(ctx context.Context, header *wire.BlockHeader,
 //
 // It must be run as a goroutine.
 func (m *CPUMiner) solver(ctx context.Context, template *mining.BlockTemplate,
-	speedStats *speedStats, isBlake3PowActive bool) {
+	speedStats *speedStats) {
 
 	for {
 		if ctx.Err() != nil {
@@ -367,7 +362,7 @@ func (m *CPUMiner) solver(ctx context.Context, template *mining.BlockTemplate,
 			}
 
 			block := dcrutil.NewBlock(&shallowBlockCopy)
-			if !m.submitBlock(block, isBlake3PowActive) {
+			if !m.submitBlock(block) {
 				m.Lock()
 				m.minedOnParents[prevBlock]++
 				m.Unlock()
@@ -442,7 +437,7 @@ func (m *CPUMiner) generateBlocks(ctx context.Context, workerID uint64) {
 			solverCtx, solverCancel = context.WithCancel(ctx)
 			solverWg.Add(1)
 			go func() {
-				m.solver(solverCtx, template, &speedStats, false)
+				m.solver(solverCtx, template, &speedStats)
 				solverWg.Done()
 			}()
 
@@ -735,7 +730,7 @@ out:
 		shallowBlockHdr := &shallowBlockCopy.Header
 		if m.solveBlock(ctx, shallowBlockHdr, &stats) {
 			block := dcrutil.NewBlock(&shallowBlockCopy)
-			if m.submitBlock(block, false) {
+			if m.submitBlock(block) {
 				m.discretePrevTemplate.Store(templateNtfn.Template)
 				blockHashes = append(blockHashes, block.Hash())
 			}

@@ -64,22 +64,22 @@ func (b *BlockChain) calcNextBlake256Diff(prevNode *blockNode, newBlockTime time
 		// Note that this behavior is deprecated and thus is only supported on
 		// testnet v3 prior to the max diff activation height.  It will be
 		// removed in future version of testnet.
-		if params.ReduceMinDifficulty && (!b.isTestNet3() || nextHeight <
-			testNet3MaxDiffActivationHeight) {
+		// if params.ReduceMinDifficulty && (!b.isTestNet3() || nextHeight <
+		// 	testNet3MaxDiffActivationHeight) {
 
-			// Return minimum difficulty when more than the desired
-			// amount of time has elapsed without mining a block.
-			reductionTime := int64(params.MinDiffReductionTime / time.Second)
-			allowMinTime := prevNode.timestamp + reductionTime
-			if newBlockTime.Unix() > allowMinTime {
-				return params.PowLimitBits
-			}
+		// 	// Return minimum difficulty when more than the desired
+		// 	// amount of time has elapsed without mining a block.
+		// 	reductionTime := int64(params.MinDiffReductionTime / time.Second)
+		// 	allowMinTime := prevNode.timestamp + reductionTime
+		// 	if newBlockTime.Unix() > allowMinTime {
+		// 		return params.PowLimitBits
+		// 	}
 
-			// The block was mined within the desired timeframe, so
-			// return the difficulty for the last block which did
-			// not have the special minimum difficulty rule applied.
-			return b.findPrevTestNetDifficulty(prevNode)
-		}
+		// 	// The block was mined within the desired timeframe, so
+		// 	// return the difficulty for the last block which did
+		// 	// not have the special minimum difficulty rule applied.
+		// 	return b.findPrevTestNetDifficulty(prevNode)
+		// }
 
 		return oldDiff
 	}
@@ -200,11 +200,11 @@ func (b *BlockChain) calcNextBlake256Diff(prevNode *blockNode, newBlockTime time
 	//
 	// This rule is only active on the version 3 test network once the max diff
 	// activation height has been reached.
-	if b.minTestNetTarget != nil && nextDiffBig.Cmp(b.minTestNetTarget) < 0 &&
-		(!b.isTestNet3() || nextHeight >= testNet3MaxDiffActivationHeight) {
+	// if b.minTestNetTarget != nil && nextDiffBig.Cmp(b.minTestNetTarget) < 0 &&
+	// 		(!b.isTestNet3() || nextHeight >= testNet3MaxDiffActivationHeight) {
 
-		nextDiffBig = b.minTestNetTarget
-	}
+	// 		nextDiffBig = b.minTestNetTarget
+	// }
 
 	// Convert the difficulty to the compact representation and return it.
 	nextDiffBits := standalone.BigToCompact(nextDiffBig)

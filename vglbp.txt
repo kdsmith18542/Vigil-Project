@@ -1,0 +1,210 @@
+Project Blueprint: Vigil (VGL) - The Definitive Guide
+Document Version: 1.2 (Ecosystem & Pool Update)
+Date: June 13, 2025
+Status: FINAL
+
+Part I: Project Vitals & Core Thesis
+Project Name: Vigil
+
+Ticker Symbol: VGL
+
+Base Technology: Fork of Decred (DCR)
+
+Proof-of-Work Algorithm: KawPoW (ASIC-Resistant, GPU-focused)
+
+Core Narrative: "Fair Launch, Vigilant Security." Vigil is a groundbreaking cryptocurrency that merges the fair, grassroots distribution of GPU mining with the ironclad security and on-chain governance of a vigilant hybrid PoS network. It is built for and governed by its community.
+
+Part II: Detailed Project Phases
+Phase 1: Foundation & Pre-Production (Months 0-2)
+Primary Goal: To forge Vigil's professional identity, establish the core infrastructure, and eliminate the primary technical risk.
+
+Task 1.1: Identity & Brand Package
+
+Deliverable: A comprehensive Brand Guide PDF.
+
+Contents:
+
+Finalized logo suite (primary, icon-only, light/dark versions).
+
+Official color palette (e.g., deep navy, slate gray, electric blue accent).
+
+Official typography (sans-serif for headings, serif for body text for a professional feel).
+
+Brand voice guide (secure, transparent, community-focused).
+
+Task 1.2: The Vigil Whitepaper
+
+Deliverable: A professionally formatted PDF whitepaper.
+
+Key Sections: Abstract, Problem Statement (ASIC centralization, network security), The Vigil Solution (Hybrid Consensus), PoW Mechanics (KawPoW), PoS Mechanics (Ticket Staking), VGL Tokenomics (detailed below), On-Chain Governance (Politeia), Treasury, The Vigil Roadmap.
+
+Task 1.3: Technical Scaffolding & Feasibility
+
+Repositories: Create private GitHub repos: vigil-node, vigil-wallet, vigil-explorer, vigil-pool, vigil-brand-assets.
+
+Proof-of-Concept:
+
+Objective: Confirm a Go-lang library for KawPoW can be integrated into a stripped-down version of the dcrd node.
+
+Success Metric: Successfully mine a single block on a private, local network using the KawPoW algorithm that is validated by the node. This is the most critical milestone of this phase.
+
+Task 1.4: [VIRAL FEATURE] The Genesis Contributor Program
+
+Concept: A pre-launch initiative to identify and onboard key community members.
+
+Execution:
+
+Create a simple application page on a temporary website.
+
+Recruit for specific roles: Testnet Mining Leads, Community Moderators (Discord/Telegram), Translators, Content Creators.
+
+Incentive: Grant these selected "Genesis Contributors" a unique, non-transferable NFT badge upon mainnet launch and a special role in Discord. This costs nothing but creates a powerful sense of early ownership and status.
+
+Phase 2: Core Development & Alpha (Months 3-6)
+Primary Goal: To build and internally test a feature-complete and stable version of the Vigil blockchain and its core software.
+
+Task 2.1: Full KawPoW Integration (vigil-node)
+
+Sub-Task 2.1.1: Replace BLAKE-256 hashing logic with KawPoW.
+
+Sub-Task 2.1.2: Modify the block header structure to accommodate KawPoW's nonce and mix-hash.
+
+Sub-Task 2.1.3: Update all relevant RPC calls for mining clients (getblocktemplate, etc.).
+
+Sub-Task 2.1.4: Tune the ASERT difficulty adjustment algorithm for KawPoW's hashrate profile to maintain the target block time.
+
+Task 2.2: VGL Tokenomics Implementation
+
+Deliverable: Finalized and coded economic parameters for the Vigil genesis block.
+
+Parameters:
+
+Total Supply: ~21,000,000 VGL (Following the proven scarcity model of Bitcoin).
+
+Block Time: ~2.5 minutes (Faster than Decred for a better user experience).
+
+Initial Block Reward: 20 VGL (A strong initial incentive to attract miners and stakers).
+
+Emission Decay: Smooth 1% reduction every 6,144 blocks (~10.7 days). This provides a predictable, fair inflation curve without jarring "halvening" events.
+
+Block Reward Split (50/40/10 Model):
+
+50% (10 VGL) to PoW Miners (KawPoW): (Viral Launch) An aggressive share to make Vigil one of the most profitable KawPoW coins at launch, bootstrapping network hashrate and attracting a large initial community.
+
+40% (8 VGL) to PoS Stakers (Ticket Holders): (Longevity & Security) A substantial reward to incentivize holding, reduce volatility, and build a powerful, invested security layer of stakeholders.
+
+10% (2 VGL) to Vigil Treasury (Politeia): (Sustainability) A self-funding mechanism, controlled by stakeholders, to pay for all future development, marketing, and ecosystem growth, ensuring Vigil's long-term survival.
+
+Task 2.3: Software Suite Rebranding & Development
+
+Fully rebrand the dcrwallet and dcrdata forks to Vigil Wallet and Vigil Explorer.
+
+Develop a one-click "Vigil Launcher" application that bundles the node and wallet for less technical users.
+
+Task 2.4: [VIRAL FEATURE] The "Vigilant Staking" Dashboard
+
+Concept: A simple, web-based dashboard integrated into the official Vigil Explorer.
+
+Features:
+
+Shows real-time Network Hashrate vs. Staked VGL.
+
+Calculates and displays a "Network Security Ratio," providing a simple, visual metric of how secure the network is from a 51% attack.
+
+Projects staking ROI based on current ticket price and participation.
+
+Viral Angle: This turns a complex security concept into a simple, shareable graphic. Users can proudly tweet screenshots of the high security ratio they are helping to create.
+
+Phase 3: Public Unveiling & Testnet (Months 7-9)
+Primary Goal: To ignite community growth and exhaustively battle-test the network in a live, public environment.
+
+Task 3.1: Go-to-Market & Community Activation
+
+Launch the official govgl.com website and open the Discord to the public.
+
+Publish a series of educational blog posts and Twitter threads: "What is Vigil?", "Why KawPoW?", "How PoS Secures Your Coins," "Understanding Politeia."
+
+Engage with crypto influencers who focus on mining and decentralization.
+
+Task 3.2: The Public Testnet Launch
+
+Deliverable: A "Testnet Launch Kit" for the community.
+
+Contents:
+
+Easy-to-use installers for the Vigil Testnet wallet/node.
+
+A web-based Testnet Faucet for getting free test VGL.
+
+A live Testnet Explorer URL.
+
+Detailed guides on how to configure miners for the testnet.
+
+Task 3.3: [VIRAL FEATURE] The "Stress Gauntlet" Competition
+
+Concept: An incentivized, week-long public testnet event.
+
+Events:
+
+Highest Hashrate Challenge: Reward for the individual miner who contributes the most hashrate over a 24-hour period.
+
+Bug Bounty Blitz: Increased rewards for any bugs found during the Gauntlet week.
+
+Governance Grand Prix: Reward the best-written (and first to be passed) proposal on the testnet Politeia system.
+
+Prizes: A pool of mainnet VGL (e.g., 0.1% of first-year supply) allocated to winners. This creates hype, ensures high testnet participation, and helps secure the network.
+
+Phase 4: Mainnet Launch & Growth (Month 10 onwards)
+Primary Goal: To execute a flawless mainnet launch and transition into a self-sustaining, community-governed project.
+
+Task 4.1: Pre-Launch Readiness
+
+Security Audit: Commission and publish a full third-party audit of the Vigil codebase.
+
+Final Binaries: Compile, sign, and prepare the official launch versions of the Vigil software.
+
+Press Kit: Prepare a downloadable press kit with logos, project descriptions, and team info.
+
+Task 4.2: Official Mining Pool Development
+
+Objective: To provide a stable, trusted, and high-performance official mining pool for Vigil at launch.
+
+Recommended Software Stack:
+
+Pool Engine: Fork of Decred's dcrpool (Go). This is critical for native compatibility with Vigil's hybrid consensus and treasury rules. The core development task is to modify it to support the KawPoW algorithm.
+
+API/Backend: Custom API written in Go, acting as the bridge between the pool engine and the user-facing website.
+
+Database Layer: A dual-database setup. PostgreSQL for persistent data (user accounts, payment history) and Redis for caching real-time, high-frequency data (worker hashrates, round shares).
+
+Frontend: Next.js (React) to build a fast, modern, and highly interactive user dashboard showing live stats, earnings, and graphs.
+
+Infrastructure Partners: Coordinate with at least two additional, third-party mining pool operators to encourage a decentralized mining ecosystem from Day 1.
+
+Task 4.3: Mainnet Launch Sequence ("The Ignition")
+
+T-minus 24 hours: Announce the exact launch time and publish the SHA256 hashes of the final software binaries.
+
+Launch Time: Publish the genesis block hash to all official channels. Release the final software on GitHub. Launch the official Vigil mining pool website.
+
+Hypercare Support: Institute a 72-hour, round-the-clock support rotation in Discord with core team members to assist with any launch issues.
+
+Task 4.4: Post-Launch Growth & Governance
+
+Roadmap Item #1 (Q1 Post-Launch): Achieve a listing on at least two reputable, community-focused exchanges (e.g., CoinEx, MEXC).
+
+Roadmap Item #2 (Q2 Post-Launch): Begin work on a user-friendly mobile wallet (iOS/Android).
+
+Task 4.5: [VIRAL FEATURE] The "Politeia Incubator" Initiative
+
+Concept: A formal process where the Treasury actively encourages and funds community-led projects that expand the Vigil ecosystem.
+
+Execution:
+
+The core team makes a formal Politeia proposal to dedicate 25% of the treasury funds for the first year specifically to "Ecosystem Grants."
+
+Community members can then submit proposals to build tools: a third-party wallet, an improved block explorer, a staking pool service, a marketing campaign, etc.
+
+VGL holders vote to approve funding.
+
+Viral Angle: This is the ultimate proof of decentralization. It turns community members into paid builders and gives everyone a direct say in how the project grows, generating immense loyalty and long-term engagement.

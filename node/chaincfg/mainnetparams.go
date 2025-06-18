@@ -9,7 +9,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/decred/dcrd/chaincfg/chainhash"
+	"vigil.network/node/chaincfg/chainhash"
 	"github.com/decred/dcrd/wire"
 )
 

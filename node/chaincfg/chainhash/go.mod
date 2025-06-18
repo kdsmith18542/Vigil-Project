@@ -1,4 +1,4 @@
-module github.com/decred/dcrd/chaincfg/chainhash
+module vigil.network/node/chaincfg/chainhash
 
 go 1.17
 

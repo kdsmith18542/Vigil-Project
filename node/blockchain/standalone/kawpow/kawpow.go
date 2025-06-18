@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"hash"
+	"io"
+	"log"
+	"math/bits"
 	"sync"
 	"time"
 
-	"github.com/decred/dcrd/chaincfg/chainhash"
+	"vigil.network/node/chaincfg/chainhash"
 )
 
 const (
@@ -20,8 +22,9 @@ const (
 	KawPowEpochLength = 7500
 
 	// Cache sizes for different memory requirements
-	cacheSize   = 64 * 1024
-	datasetSize = 4 * 1024 * 1024 * 1024
+	cacheSize   = 16 * 1024 * 1024  // 16MB
+	datasetSize = 2 * 1024 * 1024 * 1024  // 2GB
+	cacheRounds = 3  // Number of rounds for cache generation
 )
 
 // KawPow is a hasher implementing the KawPoW proof-of-work algorithm.
@@ -34,7 +37,7 @@ type KawPow struct {
 // New creates a new KawPow hasher.
 func New() *KawPow {
 	kp := &KawPow{
-		cache:    make([]uint32, cacheSize/4),
+		cache:   make([]uint32, cacheSize/4),
 		dataset:  make([]uint64, datasetSize/8),
 		cacheGen: uint64(time.Now().Unix() / 300),
 	}
@@ -43,124 +46,313 @@ func New() *KawPow {
 	seed := make([]byte, 32)
 	binary.LittleEndian.PutUint64(seed, kp.cacheGen)
 
-	cache := make([]uint32, cacheSize/4)
-	generateCache(cache, kp.cacheGen, seed)
+	var seedHash chainhash.Hash
+	copy(seedHash[:], seed)
 
-	// Generate DAG
-	dataset := make([]uint64, datasetSize/8)
-	generateDataset(dataset, cache)
+	// Generate cache and dataset
+	kp.cache = kp.generateCache(seedHash)
+	kp.dataset = kp.generateDataset(kp.cache)
 
-	kp.cache = cache
-	kp.dataset = dataset
 	return kp
 }
 
-// keccakState implements the Keccak-256 hash
+// generateCache generates the cache for the given seed.
+func (k *KawPow) generateCache(seed chainhash.Hash) []uint32 {
+	size := cacheSize / 4
+	cache := make([]uint32, size)
+
+	// Initialize the cache with the seed
+	hash := k.keccak512(seed[:])
+
+	// Copy the hash into the cache
+	for i := 0; i < len(hash)/4 && i < len(cache); i++ {
+		cache[i] = binary.LittleEndian.Uint32(hash[i*4:])
+	}
+
+	// Generate the cache
+	for i := 1; i < cacheRounds; i++ {
+		hash = k.keccak512(hash)
+		for j := 0; j < len(hash)/4 && i*len(hash)/4+j < len(cache); j++ {
+			cache[i*len(hash)/4+j] = binary.LittleEndian.Uint32(hash[j*4:])
+		}
+	}
+
+	return cache
+}
+
+// generateDataset generates the dataset for the given cache.
+func (k *KawPow) generateDataset(cache []uint32) []uint64 {
+	size := datasetSize / 8
+	dataset := make([]uint64, size)
+
+	// Generate the dataset using the cache
+	for i := 0; i < len(dataset); i++ {
+		// Calculate the parent index
+		parentIndex := i % len(cache)
+		
+		// Get the parent value from cache
+		parent := uint64(cache[parentIndex])
+		
+		// Calculate the new value using the parent and the cache
+		newValue := parent ^ uint64(i)
+		
+		// Store the new value in the dataset
+		dataset[i] = newValue
+		
+		// Update the cache for the next iteration
+		if i < len(cache) {
+			cache[i] = uint32((newValue * 0x5bd1e995) ^ (newValue >> 31))
+		}
+	}
+
+	return dataset
+}
+
+// keccakState implements the Keccak hash interface
 type keccakState interface {
-	hash.Hash
-	Read([]byte) (int, error)
+	io.Writer
+	Sum([]byte) []byte
+	Reset()
 	Size() int
 	BlockSize() int
+	Read([]byte) (int, error)
 }
 
-// keccak256State implements the Keccak-256 hash
-type keccak256State struct {
-	state [200]byte // Keccak-256 state
+// keccakF1600 implements the Keccak-f[1600] permutation
+type keccakF1600 struct {
+	a        [25]uint64
+	rate     int
+	off      int
+	buf      []byte
+	hashSize int
 }
 
-func (k *keccak256State) Sum(b []byte) []byte {
-	// Final padding and permutation
-	k.state[k.BlockSize()] ^= 0x01
-	k.state[len(k.state)-1] ^= 0x80
+// NewKeccak256 creates a new Keccak-256 hash
+func NewKeccak256() keccakState {
+	return &keccakF1600{rate: 136, hashSize: 32}
+}
 
-	// Simple permutation (would need full Keccak-f implementation for production)
-	for i := 0; i < 24; i++ {
-		// Simplified round function
-		for j := 0; j < len(k.state); j += 8 {
-			k.state[j] ^= k.state[j+1]
+// NewKeccak512 creates a new Keccak-512 hash
+func NewKeccak512() keccakState {
+	return &keccakF1600{rate: 72, hashSize: 64}
+}
+
+// Reset resets the hash to its initial state
+func (k *keccakF1600) Reset() {
+	k.a = [25]uint64{}
+	k.off = 0
+	k.buf = k.buf[:0]
+}
+
+// Write adds more data to the running hash
+func (k *keccakF1600) Write(p []byte) (int, error) {
+	if k.buf == nil {
+		k.buf = make([]byte, 0, k.rate)
+	}
+
+	n := len(p)
+	k.buf = append(k.buf, p...)
+
+	// Process full blocks
+	for len(k.buf) >= k.rate {
+		k.absorb(k.buf[:k.rate])
+		k.buf = k.buf[k.rate:]
+	}
+
+	return n, nil
+}
+
+// Sum appends the current hash to b and returns the resulting slice
+func (k *keccakF1600) Sum(b []byte) []byte {
+	hash := make([]byte, k.hashSize)
+	k.finalize(hash)
+	return append(b, hash...)
+}
+
+// finalize completes the hash and writes the result to hash
+func (k *keccakF1600) finalize(hash []byte) {
+	// Pad with 1 bit and 0 bits up to rate bytes
+	k.buf = append(k.buf, 0x01)
+	for len(k.buf) < k.rate {
+		k.buf = append(k.buf, 0)
+	}
+	k.absorb(k.buf[:k.rate])
+
+	// Squeeze the state into the hash
+	for i := 0; i < k.hashSize/8; i++ {
+		binary.LittleEndian.PutUint64(hash[i*8:], k.a[i])
+	}
+}
+
+// Size returns the number of bytes Sum will return
+func (k *keccakF1600) Size() int {
+	return k.hashSize
+}
+
+// BlockSize returns the hash's underlying block size
+func (k *keccakF1600) BlockSize() int {
+	return k.rate
+}
+
+// Read reads more data from the hash
+func (k *keccakF1600) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	if len(k.buf) == 0 {
+		return 0, io.EOF
+	}
+
+	n := copy(p, k.buf)
+	k.buf = k.buf[n:]
+	return n, nil
+}
+
+// absorb absorbs a full block of data into the state
+func (k *keccakF1600) absorb(data []byte) {
+	for i := 0; i < k.rate/8; i++ {
+		k.a[i] ^= binary.LittleEndian.Uint64(data[i*8:])
+	}
+	k.permute()
+}
+
+// permute applies the Keccak-f[1600] permutation to the state.
+func (k *keccakF1600) permute() {
+	var bc [5]uint64
+	var t uint64
+
+	for round := 0; round < 24; round++ {
+		// Theta step
+		for x := 0; x < 5; x++ {
+			bc[x] = k.a[x] ^ k.a[x+5] ^ k.a[x+10] ^ k.a[x+15] ^ k.a[x+20]
+		}
+
+		for x := 0; x < 5; x++ {
+			t = bc[(x+4)%5] ^ bits.RotateLeft64(bc[(x+1)%5], 1)
+			for y := 0; y < 5; y++ {
+				k.a[x+5*y] ^= t
+			}
+		}
+
+		// Rho and Pi steps
+		t = k.a[1]
+		x, y := 1, 0
+		for i := 0; i < 24; i++ {
+			x, y = y, (2*x+3*y)%5
+			t, k.a[x+5*y] = k.a[x+5*y], bits.RotateLeft64(t, int(rhoOffset[i]))
+		}
+
+		// Chi step
+		for y := 0; y < 5; y++ {
+			for x := 0; x < 5; x++ {
+				bc[x] = k.a[x+5*y]
+			}
+			for x := 0; x < 5; x++ {
+				k.a[x+5*y] = bc[x] ^ (^bc[(x+1)%5] & bc[(x+2)%5])
+			}
+		}
+
+		// Iota step
+		k.a[0] ^= rc[round]
+	}
+}
+
+// keccak256 computes the Keccak-256 hash of the input.
+func (k *KawPow) keccak256(data []byte) []byte {
+	h := NewKeccak256()
+	h.Write(data)
+	return h.Sum(nil)
+}
+
+// keccak512 computes the Keccak-512 hash of the input.
+func (k *KawPow) keccak512(data []byte) []byte {
+	h := NewKeccak512()
+	h.Write(data)
+	return h.Sum(nil)
+}
+
+// hashimoto implements the KawPoW hash function.
+func (k *KawPow) hashimoto(headerHash []byte, nonce, datasetSize uint64) ([]byte, []byte) {
+	if len(headerHash) != 32 {
+		panic(fmt.Sprintf("invalid header hash length: %d", len(headerHash)))
+	}
+	if datasetSize == 0 || datasetSize%128 != 0 {
+		panic(fmt.Sprintf("invalid dataset size: %d", datasetSize))
+	}
+	// Implementation of the KawPoW hash function
+	// This is a more complete implementation that uses the DAG for mixing
+
+	// Create a buffer with header + nonce
+	headerNonce := make([]byte, len(headerHash)+8)
+	copy(headerNonce, headerHash)
+	binary.LittleEndian.PutUint64(headerNonce[len(headerHash):], nonce)
+
+	// Calculate initial mix hash (keccak512 of header + nonce)
+	mix := k.keccak512(headerNonce)
+
+
+	// Number of mixing rounds (KawPoW uses 64 rounds)
+	const mixRounds = 64
+
+	// Calculate the number of 32-byte words in the DAG
+	words := datasetSize / 32
+
+	// Calculate the number of 32-byte words per mix (KawPoW uses 128 words)
+	const mixBytes = 128 * 32 // 128 words * 32 bytes per word
+	const mixWords = mixBytes / 4 // 1024 32-bit words
+
+	// Create a buffer for the mix
+	mixBuffer := make([]uint32, mixWords)
+
+	// Initialize mix buffer with the initial hash
+	for i := 0; i < len(mixBuffer); i++ {
+		if i*4+4 <= len(mix) {
+			mixBuffer[i] = binary.LittleEndian.Uint32(mix[i*4:])
 		}
 	}
 
-	return append(b, k.state[:k.Size()]...)
-}
+	// Main mixing loop
+	for i := 0; i < mixRounds; i++ {
+		// Calculate the new mix data index
+		parent := fnv(uint32(i)^mixBuffer[i%len(mixBuffer)], mixBuffer[(i+1)%len(mixBuffer)]) % uint32(words)
+		
+		// Get the parent data from the DAG
+		parentData := make([]byte, 64) // 64 bytes per DAG item
+		for j := 0; j < 16; j++ { // 16 uint32s = 64 bytes
+			if int(parent)*16+j < len(k.dataset) {
+				binary.LittleEndian.PutUint32(parentData[j*4:], uint32(k.dataset[int(parent)*16+j]))
+			}
+		}
 
-func (k *keccak256State) Write(p []byte) (int, error) {
-	// Basic keccak absorption implementation
-	for i, b := range p {
-		k.state[i%136] ^= b
-	}
-	return len(p), nil
-}
-
-func (k *keccak256State) Reset() {
-	k.state = [200]byte{}
-}
-
-func (k *keccak256State) Size() int {
-	return 32
-}
-
-func (k *keccak256State) BlockSize() int {
-	return 136
-}
-
-func (k *keccak256State) Read(p []byte) (int, error) {
-	copy(p, k.state[:len(p)])
-	return len(p), nil
-}
-
-func newKeccak256() keccakState {
-	return &keccak256State{}
-}
-
-// keccak512State implements a simplified Keccak-512 hash
-type keccak512State struct {
-	state [200]byte // Keccak-512 state
-}
-
-func (k *keccak512State) Write(p []byte) (int, error) {
-	// Basic keccak absorption implementation
-	for i, b := range p {
-		k.state[i%72] ^= b
-	}
-	return len(p), nil
-}
-
-func (k *keccak512State) Sum(b []byte) []byte {
-	// Final padding and permutation
-	k.state[72] ^= 0x01
-	k.state[len(k.state)-1] ^= 0x80
-
-	// Simple permutation (would need full Keccak-f implementation for production)
-	for i := 0; i < 24; i++ {
-		// Simplified round function
-		for j := 0; j < len(k.state); j += 8 {
-			k.state[j] ^= k.state[j+1]
+		// Mix the parent data with the current mix
+		for j := 0; j < len(mixBuffer); j++ {
+			if j*4+4 <= len(parentData) {
+				mixBuffer[j] = fnv(mixBuffer[j], binary.LittleEndian.Uint32(parentData[j*4:]))
+			}
 		}
 	}
 
-	return append(b, k.state[:64]...)
+	// Compress the mix
+	compressedMix := make([]byte, 32)
+	for i := 0; i < len(mixBuffer) && i < 8; i++ {
+		binary.LittleEndian.PutUint32(compressedMix[i*4:], mixBuffer[i])
+	}
+
+	// Calculate the final hash (keccak256 of header + compressed mix + nonce)
+	hashInput := make([]byte, len(headerHash)+len(compressedMix)+8)
+	copy(hashInput, headerHash)
+	copy(hashInput[len(headerHash):], compressedMix)
+	binary.LittleEndian.PutUint64(hashInput[len(headerHash)+len(compressedMix):], nonce)
+
+	result := k.keccak256(hashInput)
+
+	return compressedMix, result
 }
 
-func (k *keccak512State) Reset() {
-	k.state = [200]byte{}
-}
-
-func (k *keccak512State) Size() int {
-	return 64
-}
-
-func (k *keccak512State) BlockSize() int {
-	return 72
-}
-
-func (k *keccak512State) Read(p []byte) (int, error) {
-	copy(p, k.state[:len(p)])
-	return len(p), nil
-}
-
-func newKeccak512() keccakState {
-	return &keccak512State{}
+// fnv implements the Fowler-Noll-Vo hash function
+func fnv(a, b uint32) uint32 {
+	return (a * 0x01000193) ^ b
 }
 
 // CalcSeedHash calculates the seed hash for a given block height and timestamp
@@ -178,103 +370,73 @@ func CalcSeedHash(height int64, timestamp int64) (chainhash.Hash, error) {
 	hash.Write(seed)
 	return chainhash.HashH(hash.Sum(nil)), nil
 }
-
-// Hash computes the KawPoW hash of the given block header.
+// It returns the mix hash and the final hash.
 func (k *KawPow) Hash(headerBytes []byte, nonce uint64) ([]byte, []byte, error) {
-	// Extract block height and timestamp from the header bytes
-	// Assuming headerBytes is the full serialized block header, we need to carefully
-	// parse it to get the height and timestamp. Based on wire/blockheader.go,
-	// Height is at offset 152 (Version 4 + PrevBlock 32 + MerkleRoot 32 + StakeRoot 32 + VoteBits 2 + FinalState 6 + Voters 2 + FreshStake 1 + Revocations 1 + PoolSize 4 + Bits 4 + SBits 8)
-	// Timestamp is at offset 168 (Height 4 + Size 4)
-
-	if len(headerBytes) < 172 { // Minimum size to contain height and timestamp
-		return nil, nil, fmt.Errorf("invalid headerBytes length for KawPoW hash calculation: %d", len(headerBytes))
+	log.Printf("KawPow.Hash called with header length: %d, nonce: %d", len(headerBytes), nonce)
+	
+	if len(headerBytes) < 172 { // Ensure header is large enough for height and timestamp
+		return nil, nil, fmt.Errorf("header too short (got %d, want at least 172)", len(headerBytes))
 	}
 
 	height := binary.LittleEndian.Uint32(headerBytes[152:156])
 	timestamp := binary.LittleEndian.Uint32(headerBytes[168:172])
+	log.Printf("Extracted height: %d, timestamp: %d", height, timestamp)
 
-	// Calculate seed hash
+	log.Println("Calculating seed hash...")
 	seedHash, err := CalcSeedHash(int64(height), int64(timestamp))
 	if err != nil {
+		log.Printf("Error calculating seed hash: %v", err)
+		return nil, nil, err
+	}
+	log.Printf("Seed hash: %x", seedHash)
+
+	log.Println("Generating cache...")
+	cache := k.generateCache(seedHash)
+	log.Printf("Generated cache with %d items", len(cache))
+
+	if k.dataset == nil {
+		log.Println("Generating dataset...")
+		k.dataset = k.generateDataset(cache)
+	}
+
+	if len(k.dataset) == 0 {
+		err := fmt.Errorf("empty dataset generated")
+		log.Println(err)
 		return nil, nil, err
 	}
 
-	// Get the DAG for this epoch
-	epoch := int64(height) / KawPowEpochLength
-	dag, err := getDAG(epoch, seedHash)
-	if err != nil {
+	log.Println("Hashing header with Keccak-256...")
+	headerHash := k.keccak256(headerBytes)
+	log.Printf("Header hash: %x", headerHash)
+
+	log.Println("Running hashimoto...")
+	mixHash, result := k.hashimoto(headerHash, nonce, uint64(len(k.dataset)*8))
+
+	if len(mixHash) == 0 || len(result) == 0 {
+		err := fmt.Errorf("empty hash result from hashimoto")
+		log.Println(err)
 		return nil, nil, err
 	}
 
-	// Initialize hash state for Hashimoto
-	h := newKeccak256()
-
-	// Prepare input for Hashimoto: headerBytes (without nonce and mix digest) + nonce
-	// According to wire/blockheader.go, Nonce starts at offset 172 and MixDigest at 180.
-	// We need headerBytes up to offset 172, then append the nonce.
-	headerPrefix := headerBytes[:172] // Part of header before nonce
-
-	// Combine header prefix and nonce for initial hash
-	combinedInput := make([]byte, len(headerPrefix)+8)
-	copy(combinedInput, headerPrefix)
-	binary.LittleEndian.PutUint64(combinedInput[len(headerPrefix):], nonce)
-	h.Write(combinedInput)
-
-	initialHash := h.Sum(nil)
-
-	// KawPoW hash computation (Hashimoto algorithm)
-	mix := make([]byte, 64)
-	copy(mix, initialHash)
-
-	// Main hash loop using DAG
-	for i := 0; i < 64; i++ {
-		// Select a DAG item based on the current mix state
-		// Use a temporary variable for the modulo operation to ensure it's positive.
-		index := binary.LittleEndian.Uint64(mix) % uint64(len(dag.items))
-		dagItem := dag.items[index]
-
-		// Mix with DAG item (XOR operation)
-		for j := 0; j < 8; j++ {
-			valMix := binary.LittleEndian.Uint32(mix[j*4:])
-			valDag := binary.LittleEndian.Uint32(dagItem.data[j*4:])
-			binary.LittleEndian.PutUint32(mix[j*4:], valMix^valDag)
-		}
-
-		// Hash the mix
-		h.Reset()
-		h.Write(mix)
-		mix = h.Sum(nil)
-	}
-
-	// Final hash
-	h.Reset()
-	h.Write(initialHash)
-	h.Write(mix)
-	finalHash := h.Sum(nil)
-
-	// Convert to byte slices
-	var finalHashBytes [chainhash.HashSize]byte
-	copy(finalHashBytes[:], finalHash)
-
-	var mixDigestBytes [chainhash.HashSize]byte
-	copy(mixDigestBytes[:], mix)
-
-	return finalHashBytes[:], mixDigestBytes[:], nil
+	log.Printf("Hashimoto completed. Mix hash: %x, Result: %x", mixHash, result)
+	return mixHash, result, nil
 }
 
 // Verify computes the KawPoW hash and mix digest for the given block data
-// and verifies them against the provided values.
-func (k *KawPow) Verify(headerBytes []byte, nonce uint64, mixDigest []byte) (bool, error) {
-	computedHash, computedMixDigest, err := k.Hash(headerBytes, nonce)
+// Verify verifies the nonce of a block's header.
+func (k *KawPow) Verify(headerBytes []byte, nonce uint64, mixDigest, hash []byte) (bool, error) {
+	// Calculate the hash and mix digest
+	computedMix, computedHash, err := k.Hash(headerBytes, nonce)
 	if err != nil {
 		return false, err
 	}
 
-	if !bytes.Equal(computedHash, headerBytes[180:180+chainhash.HashSize]) { // Assuming headerBytes contains the final hash after mix digest
+	// Compare the computed values with the provided ones
+	if !bytes.Equal(computedMix, mixDigest) {
 		return false, nil
 	}
-	if !bytes.Equal(computedMixDigest, mixDigest) {
+
+	if !bytes.Equal(computedHash, hash) {
 		return false, nil
 	}
 
@@ -354,65 +516,39 @@ func GetSeedHash(blockNum uint64) []byte {
 	return seed
 }
 
-// generateCache generates the cache for a given epoch
-func generateCache(cache []uint32, epoch uint64, seed []byte) {
-	// Use epoch in the seed generation if seed is empty
-	if len(seed) == 0 {
-		binary.LittleEndian.PutUint64(seed[:8], epoch)
-	}
+// Constants for Keccak-f[1600] permutation
+var (
+	rhoOffset [24]uint
+	rc        [24]uint64
+)
 
-	// Initialize the cache
-	keccak := newKeccak512()
-	keccak.Write(seed)
-	keccak.Sum(seed[:0])
-
-	// Generate the cache
-	for i := 0; i < len(cache); i += 16 {
-		keccak.Write(seed)
-		binary.Read(bytes.NewReader(keccak.Sum(nil)), binary.LittleEndian, cache[i:i+16])
-		keccak.Reset()
+func init() {
+	// Initialize rho offsets
+	rhoOffsets := []uint{
+		1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14,
+		27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
 	}
+	copy(rhoOffset[:], rhoOffsets)
 
-	// Perform cache randomization
-	for i := 0; i < 3; i++ {
-		for j := 0; j < len(cache); j++ {
-			cache[j] = cache[j] ^ cache[(j+1)%len(cache)]
-		}
+	// Initialize round constants
+	rcValues := []uint64{
+		0x0000000000000001, 0x0000000000008082, 0x800000000000808a,
+		0x8000000080008000, 0x000000000000808b, 0x0000000080000001,
+		0x8000000080008081, 0x8000000000008009, 0x000000000000008a,
+		0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
+		0x000000008000808b, 0x800000000000008b, 0x8000000000008089,
+		0x8000000000008003, 0x8000000000008002, 0x8000000000000080,
+		0x000000000000800a, 0x800000008000000a, 0x8000000080008081,
+		0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
 	}
+	copy(rc[:], rcValues)
 }
 
-// generateDataset generates the dataset for a given epoch
-func generateDataset(dataset []uint64, cache []uint32) {
-	// Generate the dataset
-	for i := 0; i < len(dataset); i++ {
-		itemNum := uint32(i)
-		mix := make([]uint32, 16)
+// Helper functions for backward compatibility
+func newKeccak256() keccakState {
+	return NewKeccak256()
+}
 
-		// Initial mix
-		mix[0] = itemNum
-		for j := 1; j < 16; j++ {
-			mix[j] = cache[j] ^ mix[j-1]
-		}
-
-		// Main mixing loop
-		for j := 0; j < 256; j++ {
-			newData := make([]uint32, 16)
-			for k := 0; k < 16; k++ {
-				idx := (mix[k%16]%uint32(len(cache)/16))*16 + uint32(k)
-				newData[k] = cache[idx]
-			}
-
-			// Final mix
-			for k := 0; k < 16; k++ {
-				mix[k] = mix[k] ^ newData[k]
-			}
-		}
-
-		// Store the result
-		var result uint64
-		for j := 0; j < 8; j++ {
-			result |= uint64(mix[j%16]) << (32 * uint(j%2))
-		}
-		dataset[i] = result
-	}
+func newKeccak512() keccakState {
+	return NewKeccak512()
 }

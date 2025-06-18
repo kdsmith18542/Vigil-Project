@@ -5247,6 +5247,12 @@ func (s *Server) isBlake3PowAgendaActive(prevBlkHash *chainhash.Hash) (bool, err
 	return isActive, nil
 }
 
+// isKawPowActive returns whether KawPoW proof of work is active for the block
+// AFTER the provided block hash.
+func (s *Server) isKawPowActive(prevBlkHash *chainhash.Hash) (bool, error) {
+	return s.cfg.Chain.IsKawPowActive(prevBlkHash)
+}
+
 // isSubsidySplitR2AgendaActive returns if the modified subsidy split round 2
 // agenda is active or not for the block AFTER the provided block hash.
 func (s *Server) isSubsidySplitR2AgendaActive(prevBlkHash *chainhash.Hash) (bool, error) {

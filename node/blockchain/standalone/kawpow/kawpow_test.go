@@ -5,93 +5,71 @@
 package kawpow
 
 import (
-	"bytes"
-	"crypto/sha256"
 	"testing"
-
-	"github.com/decred/dcrd/chaincfg/chainhash"
 )
 
-// TestKawPowHash verifies the KawPoW hashing works correctly.
-func TestKawPowHash(t *testing.T) {
-	tests := []struct {
-		name      string
-		header    string
-		nonce     uint64
-		expHash   string
-		expMix    string
-		shouldErr bool
-	}{
-		{
-			name:      "basic test",
-			header:    "test header",
-			nonce:     12345,
-			expHash:   "TODO",
-			expMix:    "TODO",
-			shouldErr: false,
-		},
-		// Add more test cases as needed
+// TestBasicHash verifies the basic KawPoW hashing functionality
+func TestBasicHash(t *testing.T) {
+	header := make([]byte, 180)
+	copy(header, "Test header for hashing")
+	nonce := uint64(12345)
+
+	kp := New()
+
+	t.Log("Testing basic hash calculation...")
+	mixHash, finalHash, err := kp.Hash(header, nonce)
+
+	if err != nil {
+		t.Fatalf("Hash failed: %v", err)
 	}
 
-	kawpow := New()
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			hash, mix, err := kawpow.Hash([]byte(test.header), test.nonce)
-			if (err != nil) != test.shouldErr {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if test.shouldErr {
-				return
-			}
-
-			if test.expHash != "TODO" {
-				expHash, _ := chainhash.NewHashFromStr(test.expHash)
-				if !bytes.Equal(hash, expHash[:]) {
-					t.Errorf("unexpected hash: got %x, want %s", hash, test.expHash)
-				}
-			}
-
-			if test.expMix != "TODO" {
-				expMix, _ := chainhash.NewHashFromStr(test.expMix)
-				if !bytes.Equal(mix, expMix[:]) {
-					t.Errorf("unexpected mix: got %x, want %s", mix, test.expMix)
-				}
-			}
-		})
+	if len(mixHash) == 0 || len(finalHash) == 0 {
+		t.Fatal("Empty hash result")
 	}
+
+	t.Logf("Mix hash: %x", mixHash)
+	t.Logf("Final hash: %x", finalHash)
+
+	// Verify the hash is valid according to Verify
+	valid, err := kp.Verify(header, nonce, mixHash, finalHash)
+	if err != nil {
+		t.Fatalf("Verification failed: %v", err)
+	}
+	if !valid {
+		t.Fatal("Verification failed: hash is not valid")
+	}
+	t.Log("Verification successful")
 }
 
 // TestSeedHash verifies the seed hash calculation.
 func TestSeedHash(t *testing.T) {
 	tests := []struct {
 		name     string
-		blockNum uint64
+		height   int64
+		time     int64
 		expected string
 	}{
 		{
-			name:     "block 0",
-			blockNum: 0,
+			name:     "genesis block",
+			height:   0,
+			time:     0x5f5e100,
 			expected: "1da0af1706a31185763837b33f1d90782c0a78bbe644a59c987ab3ff9c0b346e",
 		},
 		{
 			name:     "block 1",
-			blockNum: 1,
+			height:   1,
+			time:     0x5f5e101,
 			expected: "9a4585773ce2ccd7a585c331d60a60d1e3b7d28cbb2ede3bc55445342f12f54b",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Calculate the seed hash
-			h := sha256.Sum256([]byte{byte(test.blockNum)})
-			
-			// Convert the hash to a chainhash.Hash
-			var hash chainhash.Hash
-			copy(hash[:], h[:])
-			
-			// Get the string representation of the hash
+			hash, err := CalcSeedHash(test.height, test.time)
+			if err != nil {
+				t.Fatalf("CalcSeedHash failed: %v", err)
+			}
+
 			hexStr := hash.String()
 			if hexStr != test.expected {
 				t.Errorf("unexpected seed hash: got %s, want %s", hexStr, test.expected)
